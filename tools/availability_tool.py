@@ -83,7 +83,12 @@ def get_available_slots(
 def format_slot(dt: datetime, language: str = "EN") -> str:
     """Human-friendly slot display."""
     tz = pytz.timezone(TIMEZONE)
-    dt = dt.astimezone(tz)
+    if dt.tzinfo is None:
+        # Naive datetime - assume it's already in the target timezone
+        dt = tz.localize(dt)
+    else:
+        # Timezone-aware - convert to target timezone
+        dt = dt.astimezone(tz)
     time = dt.strftime("%I:%M %p")  # "10:00 AM"
     date = dt.strftime("%A, %d %B")  # "Tuesday, 14 May"
     return f"{date} at {time}"
