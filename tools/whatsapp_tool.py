@@ -1,11 +1,12 @@
 import httpx
+from typing import Any, Optional
 from config.settings import WHATSAPP_API_URL, WHATSAPP_TOKEN, WHATSAPP_PHONE_ID
 
 
 # ── Send a plain text message ─────────────────────────────────────────────────
 
 
-async def send_message(to: str, body: str) -> dict:
+async def send_message(to: str, body: str) -> dict[str, Any]:
     """
     Send a WhatsApp text message.
     `to` must be in E.164 format: +254712345678
@@ -30,7 +31,7 @@ async def send_message(to: str, body: str) -> dict:
 # ── Parse incoming webhook payload ────────────────────────────────────────────
 
 
-def parse_webhook(payload: dict) -> dict | None:
+def parse_webhook(payload: dict) -> Optional[dict[str, Any]]:
     """
     Extract the useful parts from a WhatsApp Cloud API webhook payload.
     Returns a flat dict or None if this isn't a message event.

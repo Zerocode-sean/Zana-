@@ -6,6 +6,7 @@ Detects intent, reads conversation state, routes to the correct action.
 """
 
 import re
+from typing import Optional
 
 from google import genai
 
@@ -311,8 +312,8 @@ async def _generate_reply(
     patient_message: str,
     clinic: Clinic,
     lang: str,
-    patient_name: str | None = None,
-) -> str | None:
+    patient_name: Optional[str] = None,
+) -> Optional[str]:
     """Use Gemini to generate a natural conversational reply."""
     name_part = f"The patient's name is {patient_name}." if patient_name else "We haven't met yet."
     lang_inst = "Respond in English." if lang == "EN" else "Respond in Swahili."
