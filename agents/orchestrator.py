@@ -626,7 +626,7 @@ async def _handle_general_query(msg: IncomingMessage, clinic: Clinic, lang: str)
 
 
 async def _escalate(
-    msg: IncomingMessage, patient: Patient | None, clinic: Clinic, lang: str
+    msg: IncomingMessage, patient: Optional[Patient], clinic: Clinic, lang: str
 ) -> None:
     """Hand the conversation to a human immediately."""
     set_conversation_state(msg.from_phone, ConversationState.ESCALATED)
