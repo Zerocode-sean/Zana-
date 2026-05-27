@@ -13,7 +13,6 @@ Swap for Google Cloud Scheduler tasks in production.
 """
 
 import logging
-from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -67,7 +66,11 @@ async def job_send_24hr_reminders() -> None:
 
     for clinic_doc in clinic_docs:
         clinic_data = clinic_doc.to_dict()
-        clinic_id = clinic_data["clinic_id"]
+        if not clinic_data:
+            continue
+        clinic_id = clinic_data.get("clinic_id")
+        if not clinic_id:
+            continue
         clinic = get_clinic(clinic_id)
         if not clinic:
             continue

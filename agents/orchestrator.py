@@ -594,12 +594,12 @@ async def _handle_general_query(msg: IncomingMessage, clinic: Clinic, lang: str)
         reply = (
             f"We're open {days}.\n"
             f"🕗 {clinic.working_hours.start} – {clinic.working_hours.end}\n\n"
-            f"Would you like to book an appointment? 😊"
+            "Would you like to book an appointment? 😊"
         )
     elif any(w in text for w in ["price", "cost", "fee", "charge", "how much", "pricing", "bei"]):
         reply = (
             "Pricing depends on the service you need. "
-            f"We'd be happy to discuss — could you book a consultation so the doctor can advise you? 😊"
+            "We'd be happy to discuss — could you book a consultation so the doctor can advise you? 😊"
         )
     elif any(w in text for w in ["where", "location", "address", "wapi", "mahali"]):
         reply = clinic.location or (
@@ -638,7 +638,7 @@ async def _escalate(
     patient_phone = msg.from_phone
     await send_message(
         clinic.owner_phone,
-        f"⚠️ *Action needed*\n\n"
+        "⚠️ *Action needed*\n\n"
         f"*Patient:* {patient_name}\n"
         f"*Phone:* {patient_phone}\n"
         f'*Message:* "{msg.message_body}"\n\n'

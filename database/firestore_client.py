@@ -47,18 +47,22 @@ def get_db() -> firestore.Client:
 
 
 def get_clinic(clinic_id: str) -> Optional[Clinic]:
-    doc = get_db().collection("clinics").document(clinic_id).get()
+    doc = get_db().collection("clinics").document(clinic_id).get()  # type: ignore
     if doc.exists:
-        return Clinic(**doc.to_dict())
+        data = doc.to_dict()
+        return Clinic(**data) if data else None
     return None
 
 
 def get_clinic_by_whatsapp(whatsapp_number: str) -> Optional[Clinic]:
     """Look up which clinic owns a given WhatsApp number."""
     target = _normalize_whatsapp_number(whatsapp_number)
-    docs = get_db().collection("clinics").stream()
+    docs = get_db().collection("clinics").stream()  # type: ignore
     for doc in docs:
-        clinic = Clinic(**doc.to_dict())
+        data = doc.to_dict()
+        if not data:
+            continue
+        clinic = Clinic(**data)
         if _normalize_whatsapp_number(clinic.whatsapp_number) == target:
             return clinic
     return None
@@ -69,9 +73,10 @@ def get_clinic_by_whatsapp(whatsapp_number: str) -> Optional[Clinic]:
 
 def get_or_create_patient(phone: str, clinic_id: str) -> Patient:
     ref = get_db().collection("patients").document(phone)
-    doc = ref.get()
+    doc = ref.get()  # type: ignore
     if doc.exists:
-        return Patient(**doc.to_dict())
+        data = doc.to_dict()
+        return Patient(**data) if data else Patient(phone=phone, clinic_id=clinic_id)
 
     # First time we see this patient
     patient = Patient(phone=phone, clinic_id=clinic_id)
@@ -93,7 +98,7 @@ def set_conversation_state(
 
 
 def get_conversation_context(phone: str) -> dict[str, Any]:
-    doc = get_db().collection("patients").document(phone).get()
+    doc = get_db().collection("patients").document(phone).get()  # type: ignore
     if doc.exists:
         data = doc.to_dict()
         return data.get("conversation_context", {}) if data else {}
@@ -156,10 +161,11 @@ def get_appointment(clinic_id: str, appointment_id: str) -> Optional[Appointment
         .document(clinic_id)
         .collection("appointments")
         .document(appointment_id)
-        .get()
+        .get()  # type: ignore
     )
     if doc.exists:
-        return Appointment(**doc.to_dict())
+        data = doc.to_dict()
+        return Appointment(**data) if data else None
     return None
 
 
@@ -182,6 +188,16 @@ def confirm_appointment(clinic_id: str, appointment_id: str) -> None:
     update_appointment(clinic_id, appointment_id, {"status": AppointmentStatus.CONFIRMED.value})
 
 
+def _docs_to_appointments(docs: Any) -> list[Appointment]:
+    """Convert Firestore doc stream to list of Appointments."""
+    appointments = []
+    for d in docs:
+        data = d.to_dict()
+        if data:
+            appointments.append(Appointment(**data))
+    return appointments
+
+
 def get_appointments_for_reminder_24hr(clinic_id: str) -> list[Appointment]:
     """All BOOKED appointments happening tomorrow that haven't been reminded yet."""
     tz = pytz.timezone(TIMEZONE)
@@ -198,9 +214,9 @@ def get_appointments_for_reminder_24hr(clinic_id: str) -> list[Appointment]:
         .where("reminder_24hr_sent", "==", False)
         .where("datetime_utc", ">=", start)
         .where("datetime_utc", "<", end)
-        .stream()
+        .stream()  # type: ignore
     )
-    return [Appointment(**d.to_dict()) for d in docs]
+    return _docs_to_appointments(docs)
 
 
 def get_appointments_for_reminder_2hr(clinic_id: str) -> list[Appointment]:
@@ -218,9 +234,9 @@ def get_appointments_for_reminder_2hr(clinic_id: str) -> list[Appointment]:
         .where("reminder_2hr_sent", "==", False)
         .where("datetime_utc", ">=", now)
         .where("datetime_utc", "<=", end)
-        .stream()
+        .stream()  # type: ignore
     )
-    return [Appointment(**d.to_dict()) for d in docs]
+    return _docs_to_appointments(docs)
 
 
 def get_appointments_for_followup(clinic_id: str) -> list[Appointment]:
@@ -238,9 +254,9 @@ def get_appointments_for_followup(clinic_id: str) -> list[Appointment]:
         .where("followup_sent", "==", False)
         .where("datetime_utc", ">=", start)
         .where("datetime_utc", "<=", end)
-        .stream()
+        .stream()  # type: ignore
     )
-    return [Appointment(**d.to_dict()) for d in docs]
+    return _docs_to_appointments(docs)
 
 
 def get_todays_appointments(clinic_id: str) -> list[Appointment]:
@@ -257,9 +273,9 @@ def get_todays_appointments(clinic_id: str) -> list[Appointment]:
         .where("datetime_utc", ">=", start)
         .where("datetime_utc", "<", end)
         .where("status", "!=", AppointmentStatus.CANCELLED.value)
-        .stream()
+        .stream()  # type: ignore
     )
-    return [Appointment(**d.to_dict()) for d in docs]
+    return _docs_to_appointments(docs)
 
 
 def get_booked_slots(clinic_id: str, date: datetime) -> list[datetime]:
@@ -275,6 +291,7 @@ def get_booked_slots(clinic_id: str, date: datetime) -> list[datetime]:
         .where("status", "in", [AppointmentStatus.BOOKED.value, AppointmentStatus.CONFIRMED.value])
         .where("datetime_utc", ">=", start)
         .where("datetime_utc", "<", end)
-        .stream()
+        .stream()  # type: ignore
     )
-    return [Appointment(**d.to_dict()).datetime_utc for d in docs]
+    appointments = _docs_to_appointments(docs)
+    return [appt.datetime_utc for appt in appointments]

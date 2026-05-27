@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from models.schemas import Clinic, WorkingHours, BreakTime, Language
 from tools.availability_tool import (
     generate_slots,

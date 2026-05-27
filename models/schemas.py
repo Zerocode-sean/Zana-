@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from enum import Enum
 from datetime import datetime
 from typing import Optional
@@ -95,7 +95,7 @@ class Appointment(BaseModel):
     reminder_24hr_sent: bool = False
     reminder_2hr_sent: bool = False
     followup_sent: bool = False
-    created_at: datetime = datetime.utcnow()
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class IncomingMessage(BaseModel):
