@@ -1,0 +1,39 @@
+# Code ownership for Zana
+# This file defines who should review changes to specific parts of the codebase
+
+# Default owners for everything in the repo
+* @YOUR_USERNAME
+
+# Webhook and API
+/webhook/ @YOUR_USERNAME
+/webhook/server.py @YOUR_USERNAME
+
+# Agent orchestration
+/agents/ @YOUR_USERNAME
+/agents/orchestrator.py @YOUR_USERNAME
+
+# Database and Firestore configuration
+/database/ @YOUR_USERNAME
+/database/firestore_client.py @YOUR_USERNAME
+
+# Tools integration
+/tools/ @YOUR_USERNAME
+/tools/whatsapp_tool.py @YOUR_USERNAME
+/tools/availability_tool.py @YOUR_USERNAME
+/tools/language_tool.py @YOUR_USERNAME
+
+# Tests
+/tests/ @YOUR_USERNAME
+
+# Configuration and setup
+/config/ @YOUR_USERNAME
+*.py @YOUR_USERNAME
+requirements.txt @YOUR_USERNAME
+
+# Repository meta files
+.github/ @YOUR_USERNAME
+README.md @YOUR_USERNAME
+CONTRIBUTING.md @YOUR_USERNAME
+
+# Replace @YOUR_USERNAME with actual GitHub usernames of maintainers
+# Example: /webhook/ @alice @bob
