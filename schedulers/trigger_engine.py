@@ -13,7 +13,7 @@ Swap for Google Cloud Scheduler tasks in production.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -21,8 +21,10 @@ import pytz
 
 from config.settings import (
     TIMEZONE,
-    REMINDER_24HR_HOUR, REMINDER_24HR_MINUTE,
-    DAILY_SUMMARY_HOUR, DAILY_SUMMARY_MINUTE,
+    REMINDER_24HR_HOUR,
+    REMINDER_24HR_MINUTE,
+    DAILY_SUMMARY_HOUR,
+    DAILY_SUMMARY_MINUTE,
 )
 from database.firestore_client import (
     get_db,
@@ -34,7 +36,7 @@ from database.firestore_client import (
     get_clinic,
 )
 from database.firestore_client import get_or_create_patient
-from models.schemas import ConversationState, AppointmentStatus
+from models.schemas import ConversationState, AppointmentStatus, Patient
 from database.firestore_client import set_conversation_state
 from tools.whatsapp_tool import send_message, get_message
 from tools.language_tool import normalize_language
@@ -44,11 +46,13 @@ log = logging.getLogger("zana.triggers")
 
 # ── Helper ────────────────────────────────────────────────────────────────────
 
-def _lang(patient) -> str:
+
+def _lang(patient: Patient) -> str:
     return normalize_language(patient.language)
 
 
 # ── Job: 24-hour Reminders ────────────────────────────────────────────────────
+
 
 async def job_send_24hr_reminders() -> None:
     """
@@ -56,16 +60,15 @@ async def job_send_24hr_reminders() -> None:
     Finds all appointments for tomorrow and sends WhatsApp reminders.
     """
     log.info("⏰ Running 24hr reminder job")
-    tz  = pytz.timezone(TIMEZONE)
-    now = datetime.now(tz)
+    tz = pytz.timezone(TIMEZONE)
 
     # Fetch all clinics
     clinic_docs = get_db().collection("clinics").stream()
 
     for clinic_doc in clinic_docs:
         clinic_data = clinic_doc.to_dict()
-        clinic_id   = clinic_data["clinic_id"]
-        clinic      = get_clinic(clinic_id)
+        clinic_id = clinic_data["clinic_id"]
+        clinic = get_clinic(clinic_id)
         if not clinic:
             continue
 
@@ -74,41 +77,41 @@ async def job_send_24hr_reminders() -> None:
 
         for appt in appointments:
             patient = get_or_create_patient(appt.patient_phone, clinic_id)
-            lang    = _lang(patient)
-            tz_dt   = appt.datetime_utc.astimezone(tz)
+            lang = _lang(patient)
+            tz_dt = appt.datetime_utc.astimezone(tz)
 
             # Send reminder
             await send_message(
                 appt.patient_phone,
                 get_message(
-                    "reminder_24hr", lang,
-                    name        = appt.patient_name,
-                    clinic_name = clinic.name,
-                    date        = tz_dt.strftime("%A, %d %B"),
-                    time        = tz_dt.strftime("%I:%M %p"),
-                    doctor      = appt.doctor_name,
-                )
+                    "reminder_24hr",
+                    lang,
+                    name=appt.patient_name,
+                    clinic_name=clinic.name,
+                    date=tz_dt.strftime("%A, %d %B"),
+                    time=tz_dt.strftime("%I:%M %p"),
+                    doctor=appt.doctor_name,
+                ),
             )
 
             # Update appointment + patient state
-            update_appointment(clinic_id, appt.appointment_id, {
-                "reminder_24hr_sent": True
-            })
+            update_appointment(clinic_id, appt.appointment_id, {"reminder_24hr_sent": True})
             set_conversation_state(
                 appt.patient_phone,
                 ConversationState.AWAITING_REMINDER_RESPONSE,
                 context={
                     "appointment_id": appt.appointment_id,
-                    "date":   tz_dt.strftime("%A, %d %B"),
-                    "time":   tz_dt.strftime("%I:%M %p"),
+                    "date": tz_dt.strftime("%A, %d %B"),
+                    "time": tz_dt.strftime("%I:%M %p"),
                     "doctor": appt.doctor_name,
-                }
+                },
             )
 
             log.info(f"    ✅ Sent 24hr reminder to {appt.patient_name} ({appt.patient_phone})")
 
 
 # ── Job: 2-hour Reminders ─────────────────────────────────────────────────────
+
 
 async def job_send_2hr_reminders() -> None:
     """
@@ -121,24 +124,25 @@ async def job_send_2hr_reminders() -> None:
     clinic_docs = get_db().collection("clinics").stream()
     for clinic_doc in clinic_docs:
         clinic_id = clinic_doc.to_dict()["clinic_id"]
-        clinic    = get_clinic(clinic_id)
+        clinic = get_clinic(clinic_id)
         if not clinic:
             continue
 
         appointments = get_appointments_for_reminder_2hr(clinic_id)
         for appt in appointments:
             patient = get_or_create_patient(appt.patient_phone, clinic_id)
-            lang    = _lang(patient)
-            tz_dt   = appt.datetime_utc.astimezone(tz)
+            lang = _lang(patient)
+            tz_dt = appt.datetime_utc.astimezone(tz)
 
             await send_message(
                 appt.patient_phone,
                 get_message(
-                    "reminder_2hr", lang,
-                    name   = appt.patient_name,
-                    doctor = appt.doctor_name,
-                    time   = tz_dt.strftime("%I:%M %p"),
-                )
+                    "reminder_2hr",
+                    lang,
+                    name=appt.patient_name,
+                    doctor=appt.doctor_name,
+                    time=tz_dt.strftime("%I:%M %p"),
+                ),
             )
 
             update_appointment(clinic_id, appt.appointment_id, {"reminder_2hr_sent": True})
@@ -146,6 +150,7 @@ async def job_send_2hr_reminders() -> None:
 
 
 # ── Job: Post-Visit Follow-Up ─────────────────────────────────────────────────
+
 
 async def job_send_followups() -> None:
     """
@@ -157,33 +162,39 @@ async def job_send_followups() -> None:
     clinic_docs = get_db().collection("clinics").stream()
     for clinic_doc in clinic_docs:
         clinic_id = clinic_doc.to_dict()["clinic_id"]
-        clinic    = get_clinic(clinic_id)
+        clinic = get_clinic(clinic_id)
         if not clinic:
             continue
 
         appointments = get_appointments_for_followup(clinic_id)
         for appt in appointments:
             patient = get_or_create_patient(appt.patient_phone, clinic_id)
-            lang    = _lang(patient)
+            lang = _lang(patient)
 
             await send_message(
                 appt.patient_phone,
                 get_message(
-                    "followup", lang,
-                    name   = appt.patient_name,
-                    doctor = appt.doctor_name,
-                )
+                    "followup",
+                    lang,
+                    name=appt.patient_name,
+                    doctor=appt.doctor_name,
+                ),
             )
 
-            update_appointment(clinic_id, appt.appointment_id, {
-                "followup_sent": True,
-                "status": AppointmentStatus.COMPLETED.value,
-            })
+            update_appointment(
+                clinic_id,
+                appt.appointment_id,
+                {
+                    "followup_sent": True,
+                    "status": AppointmentStatus.COMPLETED.value,
+                },
+            )
             set_conversation_state(appt.patient_phone, ConversationState.POST_VISIT)
             log.info(f"    ✅ Sent follow-up to {appt.patient_name}")
 
 
 # ── Job: Daily Summary to Owner ───────────────────────────────────────────────
+
 
 async def job_daily_summary() -> None:
     """
@@ -196,13 +207,13 @@ async def job_daily_summary() -> None:
     clinic_docs = get_db().collection("clinics").stream()
     for clinic_doc in clinic_docs:
         clinic_id = clinic_doc.to_dict()["clinic_id"]
-        clinic    = get_clinic(clinic_id)
+        clinic = get_clinic(clinic_id)
         if not clinic:
             continue
 
         appointments = get_todays_appointments(clinic_id)
-        confirmed    = [a for a in appointments if a.status == AppointmentStatus.CONFIRMED.value]
-        pending      = [a for a in appointments if a.status == AppointmentStatus.BOOKED.value]
+        confirmed = [a for a in appointments if a.status == AppointmentStatus.CONFIRMED.value]
+        pending = [a for a in appointments if a.status == AppointmentStatus.BOOKED.value]
 
         if not appointments:
             summary = (
@@ -221,7 +232,7 @@ async def job_daily_summary() -> None:
             if appointments:
                 summary += "*Today's patients:*\n"
                 for appt in sorted(appointments, key=lambda a: a.datetime_utc):
-                    tz_dt  = appt.datetime_utc.astimezone(tz)
+                    tz_dt = appt.datetime_utc.astimezone(tz)
                     status = "✅" if appt.status == AppointmentStatus.CONFIRMED.value else "⏳"
                     summary += f"{status} {tz_dt.strftime('%I:%M %p')} — {appt.patient_name} ({appt.service})\n"
 
@@ -233,12 +244,13 @@ async def job_daily_summary() -> None:
 
 # ── Scheduler Setup ───────────────────────────────────────────────────────────
 
+
 def create_scheduler() -> AsyncIOScheduler:
     """
     Build and return the configured APScheduler instance.
     Call scheduler.start() in main.py.
     """
-    tz        = pytz.timezone(TIMEZONE)
+    tz = pytz.timezone(TIMEZONE)
     scheduler = AsyncIOScheduler(timezone=tz)
 
     # Daily summary — 7:30 AM

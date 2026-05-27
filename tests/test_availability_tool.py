@@ -103,11 +103,20 @@ class TestFormatSlotsList:
 class TestParseDatetimeFromText:
     def test_tomorrow_morning(self, monkeypatch):
         from tools import availability_tool as at
+
         fake_now = datetime(2026, 5, 18, 8, 0)
-        monkeypatch.setattr(at, "datetime", type("FakeDatetime", (), {
-            "now": classmethod(lambda cls, tz: fake_now),
-            "__getattr__": lambda self, name: getattr(datetime, name),
-        }))
+        monkeypatch.setattr(
+            at,
+            "datetime",
+            type(
+                "FakeDatetime",
+                (),
+                {
+                    "now": classmethod(lambda cls, tz: fake_now),
+                    "__getattr__": lambda self, name: getattr(datetime, name),
+                },
+            ),
+        )
         clinic = _make_clinic()
         date, pref = parse_datetime_from_text("tomorrow morning", clinic)
         assert date is not None
@@ -116,11 +125,20 @@ class TestParseDatetimeFromText:
 
     def test_specific_day(self, monkeypatch):
         from tools import availability_tool as at
+
         fake_now = datetime(2026, 5, 18, 8, 0)  # Monday
-        monkeypatch.setattr(at, "datetime", type("FakeDatetime", (), {
-            "now": classmethod(lambda cls, tz: fake_now),
-            "__getattr__": lambda self, name: getattr(datetime, name),
-        }))
+        monkeypatch.setattr(
+            at,
+            "datetime",
+            type(
+                "FakeDatetime",
+                (),
+                {
+                    "now": classmethod(lambda cls, tz: fake_now),
+                    "__getattr__": lambda self, name: getattr(datetime, name),
+                },
+            ),
+        )
         clinic = _make_clinic()
         date, pref = parse_datetime_from_text("Friday afternoon", clinic)
         assert date is not None
@@ -129,11 +147,20 @@ class TestParseDatetimeFromText:
 
     def test_specific_time(self, monkeypatch):
         from tools import availability_tool as at
+
         fake_now = datetime(2026, 5, 18, 8, 0)
-        monkeypatch.setattr(at, "datetime", type("FakeDatetime", (), {
-            "now": classmethod(lambda cls, tz: fake_now),
-            "__getattr__": lambda self, name: getattr(datetime, name),
-        }))
+        monkeypatch.setattr(
+            at,
+            "datetime",
+            type(
+                "FakeDatetime",
+                (),
+                {
+                    "now": classmethod(lambda cls, tz: fake_now),
+                    "__getattr__": lambda self, name: getattr(datetime, name),
+                },
+            ),
+        )
         clinic = _make_clinic()
         date, pref = parse_datetime_from_text("at 3pm", clinic)
         assert date is not None
@@ -142,11 +169,20 @@ class TestParseDatetimeFromText:
 
     def test_swahili_tomorrow(self, monkeypatch):
         from tools import availability_tool as at
+
         fake_now = datetime(2026, 5, 18, 8, 0)
-        monkeypatch.setattr(at, "datetime", type("FakeDatetime", (), {
-            "now": classmethod(lambda cls, tz: fake_now),
-            "__getattr__": lambda self, name: getattr(datetime, name),
-        }))
+        monkeypatch.setattr(
+            at,
+            "datetime",
+            type(
+                "FakeDatetime",
+                (),
+                {
+                    "now": classmethod(lambda cls, tz: fake_now),
+                    "__getattr__": lambda self, name: getattr(datetime, name),
+                },
+            ),
+        )
         clinic = _make_clinic()
         date, pref = parse_datetime_from_text("kesho asubuhi", clinic)
         assert date is not None
@@ -155,11 +191,20 @@ class TestParseDatetimeFromText:
 
     def test_unparseable_returns_none(self, monkeypatch):
         from tools import availability_tool as at
+
         fake_now = datetime(2026, 5, 18, 8, 0)
-        monkeypatch.setattr(at, "datetime", type("FakeDatetime", (), {
-            "now": classmethod(lambda cls, tz: fake_now),
-            "__getattr__": lambda self, name: getattr(datetime, name),
-        }))
+        monkeypatch.setattr(
+            at,
+            "datetime",
+            type(
+                "FakeDatetime",
+                (),
+                {
+                    "now": classmethod(lambda cls, tz: fake_now),
+                    "__getattr__": lambda self, name: getattr(datetime, name),
+                },
+            ),
+        )
         clinic = _make_clinic()
         date, pref = parse_datetime_from_text("blah blah blah", clinic)
         assert date is None

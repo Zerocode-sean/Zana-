@@ -90,7 +90,9 @@ async def run_chat(messages: list[str], store: MemoryStore | None = None) -> Mem
             else:
                 setattr(store.patient, key, value)
 
-    def fake_set_conversation_state(phone: str, state: ConversationState, context: dict | None = None) -> None:
+    def fake_set_conversation_state(
+        phone: str, state: ConversationState, context: dict | None = None
+    ) -> None:
         store.patient.conversation_state = state
         if context is not None:
             store.conversation_context = context
@@ -143,9 +145,13 @@ async def run_chat(messages: list[str], store: MemoryStore | None = None) -> Mem
         return datetime.now(timezone.utc) + timedelta(days=1), "morning"
 
     def fake_format_slots_list(slots, lang):
-        return "\n".join(f"{idx + 1}. {slot.strftime('%Y-%m-%d %H:%M')}" for idx, slot in enumerate(slots))
+        return "\n".join(
+            f"{idx + 1}. {slot.strftime('%Y-%m-%d %H:%M')}" for idx, slot in enumerate(slots)
+        )
 
-    async def fake_generate_reply(patient_message: str, clinic: Clinic, lang: str, patient_name: str | None = None) -> str | None:
+    async def fake_generate_reply(
+        patient_message: str, clinic: Clinic, lang: str, patient_name: str | None = None
+    ) -> str | None:
         return None  # fall back to template
 
     orch.send_message = fake_send_message
@@ -177,7 +183,7 @@ async def run_chat(messages: list[str], store: MemoryStore | None = None) -> Mem
         )
         await orch.handle_message(incoming)
         print()
-    
+
     return store
 
 
@@ -194,7 +200,7 @@ def parse_args() -> argparse.Namespace:
 async def interactive_chat(store: MemoryStore | None = None) -> None:
     if store is None:
         store = await run_chat([])
-    
+
     print("\nType messages like a patient. Press Enter on an empty line to quit.\n")
     while True:
         try:

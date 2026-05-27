@@ -2,15 +2,19 @@ import uuid
 import re
 from pathlib import Path
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Any, Optional
 import pytz
 
 from google.cloud import firestore
 
 from config.settings import FIREBASE_CREDENTIALS, TIMEZONE
 from models.schemas import (
-    Clinic, Patient, Appointment,
-    ConversationState, AppointmentStatus, Language
+    Clinic,
+    Patient,
+    Appointment,
+    ConversationState,
+    AppointmentStatus,
+    Language,
 )
 
 # ── Client singleton ──────────────────────────────────────────────────────────
@@ -19,6 +23,7 @@ _db: Optional[firestore.Client] = None
 
 def _normalize_whatsapp_number(value: str) -> str:
     return re.sub(r"\D", "", value or "")
+
 
 def get_db() -> firestore.Client:
     global _db
@@ -40,11 +45,13 @@ def get_db() -> firestore.Client:
 
 # ── Clinic Operations ─────────────────────────────────────────────────────────
 
+
 def get_clinic(clinic_id: str) -> Optional[Clinic]:
     doc = get_db().collection("clinics").document(clinic_id).get()
     if doc.exists:
         return Clinic(**doc.to_dict())
     return None
+
 
 def get_clinic_by_whatsapp(whatsapp_number: str) -> Optional[Clinic]:
     """Look up which clinic owns a given WhatsApp number."""
@@ -59,9 +66,10 @@ def get_clinic_by_whatsapp(whatsapp_number: str) -> Optional[Clinic]:
 
 # ── Patient Operations ────────────────────────────────────────────────────────
 
+
 def get_or_create_patient(phone: str, clinic_id: str) -> Patient:
-    ref  = get_db().collection("patients").document(phone)
-    doc  = ref.get()
+    ref = get_db().collection("patients").document(phone)
+    doc = ref.get()
     if doc.exists:
         return Patient(**doc.to_dict())
 
@@ -70,30 +78,40 @@ def get_or_create_patient(phone: str, clinic_id: str) -> Patient:
     ref.set(patient.model_dump())
     return patient
 
-def update_patient(phone: str, updates: dict) -> None:
+
+def update_patient(phone: str, updates: dict[str, Any]) -> None:
     get_db().collection("patients").document(phone).update(updates)
 
-def set_conversation_state(phone: str, state: ConversationState, context: dict = None) -> None:
-    payload = {"conversation_state": state.value}
+
+def set_conversation_state(
+    phone: str, state: ConversationState, context: Optional[dict[str, Any]] = None
+) -> None:
+    payload: dict[str, Any] = {"conversation_state": state.value}
     if context is not None:
         payload["conversation_context"] = context
     update_patient(phone, payload)
 
-def get_conversation_context(phone: str) -> dict:
+
+def get_conversation_context(phone: str) -> dict[str, Any]:
     doc = get_db().collection("patients").document(phone).get()
     if doc.exists:
-        return doc.to_dict().get("conversation_context", {})
+        data = doc.to_dict()
+        return data.get("conversation_context", {}) if data else {}
     return {}
+
 
 def set_patient_language(phone: str, language: Language) -> None:
     update_patient(phone, {"language": language.value})
 
+
 def increment_unknown_intent(phone: str) -> int:
     ref = get_db().collection("patients").document(phone)
     doc = ref.get()
-    count = doc.to_dict().get("unknown_intent_count", 0) + 1
+    data = doc.to_dict() if doc.exists else {}
+    count = data.get("unknown_intent_count", 0) + 1
     ref.update({"unknown_intent_count": count})
     return count
+
 
 def reset_unknown_intent(phone: str) -> None:
     update_patient(phone, {"unknown_intent_count": 0})
@@ -101,67 +119,80 @@ def reset_unknown_intent(phone: str) -> None:
 
 # ── Appointment Operations ────────────────────────────────────────────────────
 
+
 def create_appointment(
-    clinic_id:    str,
+    clinic_id: str,
     patient_phone: str,
     patient_name: str,
-    doctor_name:  str,
-    service:      str,
-    dt:           datetime,
+    doctor_name: str,
+    service: str,
+    dt: datetime,
 ) -> Appointment:
     appt_id = str(uuid.uuid4())
     appt = Appointment(
-        appointment_id = appt_id,
-        clinic_id      = clinic_id,
-        patient_phone  = patient_phone,
-        patient_name   = patient_name,
-        doctor_name    = doctor_name,
-        service        = service,
-        datetime_utc   = dt,
+        appointment_id=appt_id,
+        clinic_id=clinic_id,
+        patient_phone=patient_phone,
+        patient_name=patient_name,
+        doctor_name=doctor_name,
+        service=service,
+        datetime_utc=dt,
     )
     (
         get_db()
-        .collection("clinics").document(clinic_id)
-        .collection("appointments").document(appt_id)
+        .collection("clinics")
+        .document(clinic_id)
+        .collection("appointments")
+        .document(appt_id)
         .set(appt.model_dump())
     )
     return appt
 
+
 def get_appointment(clinic_id: str, appointment_id: str) -> Optional[Appointment]:
     doc = (
         get_db()
-        .collection("clinics").document(clinic_id)
-        .collection("appointments").document(appointment_id)
+        .collection("clinics")
+        .document(clinic_id)
+        .collection("appointments")
+        .document(appointment_id)
         .get()
     )
     if doc.exists:
         return Appointment(**doc.to_dict())
     return None
 
-def update_appointment(clinic_id: str, appointment_id: str, updates: dict) -> None:
+
+def update_appointment(clinic_id: str, appointment_id: str, updates: dict[str, Any]) -> None:
     (
         get_db()
-        .collection("clinics").document(clinic_id)
-        .collection("appointments").document(appointment_id)
+        .collection("clinics")
+        .document(clinic_id)
+        .collection("appointments")
+        .document(appointment_id)
         .update(updates)
     )
+
 
 def cancel_appointment(clinic_id: str, appointment_id: str) -> None:
     update_appointment(clinic_id, appointment_id, {"status": AppointmentStatus.CANCELLED.value})
 
+
 def confirm_appointment(clinic_id: str, appointment_id: str) -> None:
     update_appointment(clinic_id, appointment_id, {"status": AppointmentStatus.CONFIRMED.value})
 
+
 def get_appointments_for_reminder_24hr(clinic_id: str) -> list[Appointment]:
     """All BOOKED appointments happening tomorrow that haven't been reminded yet."""
-    tz    = pytz.timezone(TIMEZONE)
-    now   = datetime.now(tz)
+    tz = pytz.timezone(TIMEZONE)
+    now = datetime.now(tz)
     start = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-    end   = start + timedelta(days=1)
+    end = start + timedelta(days=1)
 
     docs = (
         get_db()
-        .collection("clinics").document(clinic_id)
+        .collection("clinics")
+        .document(clinic_id)
         .collection("appointments")
         .where("status", "in", [AppointmentStatus.BOOKED.value])
         .where("reminder_24hr_sent", "==", False)
@@ -171,15 +202,17 @@ def get_appointments_for_reminder_24hr(clinic_id: str) -> list[Appointment]:
     )
     return [Appointment(**d.to_dict()) for d in docs]
 
+
 def get_appointments_for_reminder_2hr(clinic_id: str) -> list[Appointment]:
     """Unconfirmed appointments in the next 2 hours without a 2hr reminder sent."""
-    tz    = pytz.timezone(TIMEZONE)
-    now   = datetime.now(tz)
-    end   = now + timedelta(hours=2)
+    tz = pytz.timezone(TIMEZONE)
+    now = datetime.now(tz)
+    end = now + timedelta(hours=2)
 
     docs = (
         get_db()
-        .collection("clinics").document(clinic_id)
+        .collection("clinics")
+        .document(clinic_id)
         .collection("appointments")
         .where("status", "==", AppointmentStatus.BOOKED.value)
         .where("reminder_2hr_sent", "==", False)
@@ -189,16 +222,18 @@ def get_appointments_for_reminder_2hr(clinic_id: str) -> list[Appointment]:
     )
     return [Appointment(**d.to_dict()) for d in docs]
 
+
 def get_appointments_for_followup(clinic_id: str) -> list[Appointment]:
     """Completed/past appointments from 2 hours ago without a followup sent."""
-    tz    = pytz.timezone(TIMEZONE)
-    now   = datetime.now(tz)
+    tz = pytz.timezone(TIMEZONE)
+    now = datetime.now(tz)
     start = now - timedelta(hours=3)
-    end   = now - timedelta(hours=2)
+    end = now - timedelta(hours=2)
 
     docs = (
         get_db()
-        .collection("clinics").document(clinic_id)
+        .collection("clinics")
+        .document(clinic_id)
         .collection("appointments")
         .where("followup_sent", "==", False)
         .where("datetime_utc", ">=", start)
@@ -207,15 +242,17 @@ def get_appointments_for_followup(clinic_id: str) -> list[Appointment]:
     )
     return [Appointment(**d.to_dict()) for d in docs]
 
+
 def get_todays_appointments(clinic_id: str) -> list[Appointment]:
-    tz    = pytz.timezone(TIMEZONE)
-    now   = datetime.now(tz)
+    tz = pytz.timezone(TIMEZONE)
+    now = datetime.now(tz)
     start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    end   = start + timedelta(days=1)
+    end = start + timedelta(days=1)
 
     docs = (
         get_db()
-        .collection("clinics").document(clinic_id)
+        .collection("clinics")
+        .document(clinic_id)
         .collection("appointments")
         .where("datetime_utc", ">=", start)
         .where("datetime_utc", "<", end)
@@ -224,19 +261,18 @@ def get_todays_appointments(clinic_id: str) -> list[Appointment]:
     )
     return [Appointment(**d.to_dict()) for d in docs]
 
+
 def get_booked_slots(clinic_id: str, date: datetime) -> list[datetime]:
     """All booked datetime slots for a given day."""
     start = date.replace(hour=0, minute=0, second=0, microsecond=0)
-    end   = start + timedelta(days=1)
+    end = start + timedelta(days=1)
 
     docs = (
         get_db()
-        .collection("clinics").document(clinic_id)
+        .collection("clinics")
+        .document(clinic_id)
         .collection("appointments")
-        .where("status", "in", [
-            AppointmentStatus.BOOKED.value,
-            AppointmentStatus.CONFIRMED.value
-        ])
+        .where("status", "in", [AppointmentStatus.BOOKED.value, AppointmentStatus.CONFIRMED.value])
         .where("datetime_utc", ">=", start)
         .where("datetime_utc", "<", end)
         .stream()

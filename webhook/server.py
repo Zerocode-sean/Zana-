@@ -28,6 +28,7 @@ log = logging.getLogger("zana.server")
 
 # ── App lifecycle ─────────────────────────────────────────────────────────────
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     log.info("🚀 Zana starting up...")
@@ -38,16 +39,18 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown()
     log.info("👋 Zana shutting down")
 
+
 app = FastAPI(title="Zana", version="1.0.0", lifespan=lifespan)
 
 
 # ── Webhook verification ───────────────────────────────────────────────────────
 # Meta calls this once when you register the webhook URL in the dashboard.
 
+
 @app.get("/webhook")
 async def verify_webhook(
-    hub_mode:        str = Query(alias="hub.mode"),
-    hub_challenge:   str = Query(alias="hub.challenge"),
+    hub_mode: str = Query(alias="hub.mode"),
+    hub_challenge: str = Query(alias="hub.challenge"),
     hub_verify_token: str = Query(alias="hub.verify_token"),
 ):
     if hub_mode == "subscribe" and hub_verify_token == WHATSAPP_VERIFY_TOKEN:
@@ -58,6 +61,7 @@ async def verify_webhook(
 
 # ── Inbound message handler ───────────────────────────────────────────────────
 
+
 @app.post("/webhook")
 async def receive_message(request: Request):
     """
@@ -66,7 +70,7 @@ async def receive_message(request: Request):
     (Meta will retry if we don't, causing duplicate messages).
     """
     payload = await request.json()
-    parsed  = parse_webhook(payload)
+    parsed = parse_webhook(payload)
 
     if not parsed:
         # Not a text message (delivery receipt, read receipt, etc.) — ignore
@@ -82,15 +86,16 @@ async def receive_message(request: Request):
 
     # Build a structured message object
     msg = IncomingMessage(
-        from_phone  = parsed["from_phone"],
-        message_body = parsed["message_body"],
-        message_id  = parsed["message_id"],
-        timestamp   = datetime.utcnow(),
-        clinic_id   = clinic.clinic_id,
+        from_phone=parsed["from_phone"],
+        message_body=parsed["message_body"],
+        message_id=parsed["message_id"],
+        timestamp=datetime.utcnow(),
+        clinic_id=clinic.clinic_id,
     )
 
     # Update patient name if WhatsApp provides it
     from database.firestore_client import update_patient, get_or_create_patient
+
     patient = get_or_create_patient(msg.from_phone, clinic.clinic_id)
     if not patient.name and parsed.get("name"):
         update_patient(msg.from_phone, {"name": parsed["name"]})
@@ -106,6 +111,7 @@ async def receive_message(request: Request):
 
 # ── Health check ──────────────────────────────────────────────────────────────
 
+
 @app.get("/health")
 async def health():
     return {"status": "healthy", "service": "Zana"}
@@ -115,4 +121,5 @@ async def health():
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("webhook.server:app", host="0.0.0.0", port=8000, reload=True)

@@ -2,17 +2,68 @@ from models.schemas import Language
 
 # ── Keyword signals per language ──────────────────────────────────────────────
 SWAHILI_SIGNALS = {
-    "habari", "nataka", "miadi", "sawa", "tafadhali", "karibu", "asante",
-    "daktari", "sijui", "nitakuja", "nakuja", "kliniki", "leo", "kesho",
-    "asubuhi", "jioni", "usiku", "mchana", "nzuri", "pamoja", "ninahitaji",
-    "naweza", "unaweza", "swali", "jibu", "futa", "badilisha", "kubali",
-    "saa", "dakika", "wiki", "mwezi", "tarehe", "jina", "dawa", "mgonjwa",
+    "habari",
+    "nataka",
+    "miadi",
+    "sawa",
+    "tafadhali",
+    "karibu",
+    "asante",
+    "daktari",
+    "sijui",
+    "nitakuja",
+    "nakuja",
+    "kliniki",
+    "leo",
+    "kesho",
+    "asubuhi",
+    "jioni",
+    "usiku",
+    "mchana",
+    "nzuri",
+    "pamoja",
+    "ninahitaji",
+    "naweza",
+    "unaweza",
+    "swali",
+    "jibu",
+    "futa",
+    "badilisha",
+    "kubali",
+    "saa",
+    "dakika",
+    "wiki",
+    "mwezi",
+    "tarehe",
+    "jina",
+    "dawa",
+    "mgonjwa",
 }
 
 SHENG_SIGNALS = {
-    "mambo", "poa", "si mbaya", "sawa tu", "nipigie", "nisaidie", "uko",
-    "niko", "unataka", "ninataka", "vipi", "buda", "msee", "dem", "kama",
-    "ama", "kweli", "fiti", "safi", "inabidi", "lazima", "shida", "ngori",
+    "mambo",
+    "poa",
+    "si mbaya",
+    "sawa tu",
+    "nipigie",
+    "nisaidie",
+    "uko",
+    "niko",
+    "unataka",
+    "ninataka",
+    "vipi",
+    "buda",
+    "msee",
+    "dem",
+    "kama",
+    "ama",
+    "kweli",
+    "fiti",
+    "safi",
+    "inabidi",
+    "lazima",
+    "shida",
+    "ngori",
 }
 
 
@@ -29,7 +80,7 @@ def detect_language(text: str) -> Language:
     lower = text.lower()
     words = set(lower.split())
 
-    sheng_hits   = words & SHENG_SIGNALS
+    sheng_hits = words & SHENG_SIGNALS
     swahili_hits = words & SWAHILI_SIGNALS
 
     if sheng_hits:
@@ -53,5 +104,5 @@ def normalize_language(language: Language) -> str:
     return {
         Language.ENGLISH: "EN",
         Language.SWAHILI: "SW",
-        Language.SHENG:   "SW",   # Sheng patients get Swahili templates
+        Language.SHENG: "SW",  # Sheng patients get Swahili templates
     }[language]

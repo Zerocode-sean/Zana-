@@ -18,6 +18,10 @@ jobs:
       matrix:
         python-version: ['3.9', '3.10', '3.11']
     
+    env:
+      GOOGLE_API_KEY: dummy-key-for-ci-testing
+      FIREBASE_CREDENTIALS: ./zana-1e237-firebase-adminsdk-fbsvc-f26233726e.json
+    
     steps:
     - uses: actions/checkout@v4
     

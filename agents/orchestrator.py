@@ -11,22 +11,45 @@ from google import genai
 
 from config.settings import GOOGLE_API_KEY, GEMINI_MODEL, MAX_SLOT_OPTIONS, UNKNOWN_INTENT_LIMIT
 from models.schemas import (
-    IncomingMessage, Intent, ConversationState, Language, AppointmentStatus,
-    Clinic, Patient
+    IncomingMessage,
+    Intent,
+    ConversationState,
+    Clinic,
+    Patient,
 )
 from database.firestore_client import (
-    get_or_create_patient, get_clinic, update_patient,
-    set_conversation_state, get_conversation_context,
-    increment_unknown_intent, reset_unknown_intent,
-    set_patient_language, create_appointment, cancel_appointment, confirm_appointment,
+    get_or_create_patient,
+    get_clinic,
+    update_patient,
+    set_conversation_state,
+    get_conversation_context,
+    increment_unknown_intent,
+    reset_unknown_intent,
+    set_patient_language,
+    create_appointment,
+    cancel_appointment,
+    confirm_appointment,
 )
 from tools.whatsapp_tool import send_message, get_message
 from tools.language_tool import detect_language, normalize_language
 from tools.availability_tool import (
-    get_available_slots, format_slots_list, format_slot, parse_datetime_from_text
+    get_available_slots,
+    format_slots_list,
+    parse_datetime_from_text,
 )
 
-_genai_client = genai.Client(api_key=GOOGLE_API_KEY)
+# Lazy initialization of Gemini client
+_genai_client = None
+
+
+def _get_genai_client():
+    """Initialize Gemini client on first use."""
+    global _genai_client
+    if _genai_client is None:
+        if not GOOGLE_API_KEY:
+            raise ValueError("GOOGLE_API_KEY environment variable is not set")
+        _genai_client = genai.Client(api_key=GOOGLE_API_KEY)
+    return _genai_client
 
 
 def _word_in_text(word: str, text: str) -> bool:
@@ -38,27 +61,62 @@ def _fallback_intent(message: str) -> Intent:
     """Use simple keyword rules when Gemini is unavailable."""
     text = message.lower().strip()
 
-    if any(term in text for term in [
-        "chest pain", "shortness of breath", "can't breathe", "cant breathe",
-        "emergency", "urgent", "bleeding", "fainting", "severe pain",
-        "fever", "high fever", "high temperature", "stroke", "seizure",
-    ]):
+    if any(
+        term in text
+        for term in [
+            "chest pain",
+            "shortness of breath",
+            "can't breathe",
+            "cant breathe",
+            "emergency",
+            "urgent",
+            "bleeding",
+            "fainting",
+            "severe pain",
+            "fever",
+            "high fever",
+            "high temperature",
+            "stroke",
+            "seizure",
+        ]
+    ):
         return Intent.URGENT_MEDICAL
 
     # Check reschedule before schedule since "reschedule" contains "schedule"
-    if any(term in text for term in [
-        "reschedule", "move", "change time", "badilisha", "later",
-    ]):
+    if any(
+        term in text
+        for term in [
+            "reschedule",
+            "move",
+            "change time",
+            "badilisha",
+            "later",
+        ]
+    ):
         return Intent.RESCHEDULE
 
-    if any(term in text for term in [
-        "book", "appointment", "schedule", "see the doctor", "visit",
-        "consultation", "miadi", "panga", "nataka kuja", "slot",
-    ]):
+    if any(
+        term in text
+        for term in [
+            "book",
+            "appointment",
+            "schedule",
+            "see the doctor",
+            "visit",
+            "consultation",
+            "miadi",
+            "panga",
+            "nataka kuja",
+            "slot",
+        ]
+    ):
         return Intent.BOOK_APPOINTMENT
 
     # Word-boundary matching for short/ambiguous tokens
-    if any(_word_in_text(t, text) for t in ["confirm", "yes", "ndiyo", "ndio", "sawa", "1", "i'll come", "will come"]):
+    if any(
+        _word_in_text(t, text)
+        for t in ["confirm", "yes", "ndiyo", "ndio", "sawa", "1", "i'll come", "will come"]
+    ):
         return Intent.CONFIRM_APPOINTMENT
 
     if any(_word_in_text(t, text) for t in ["cancel", "no", "sitakuja", "futa", "2", "not coming"]):
@@ -68,20 +126,41 @@ def _fallback_intent(message: str) -> Intent:
     if "good morning" in text or "good evening" in text:
         return Intent.GREETING
 
-    if text in ("3",) or any(_word_in_text(t, text) for t in ["hi", "hello", "hey", "habari", "mambo", "sasa"]):
+    if text in ("3",) or any(
+        _word_in_text(t, text) for t in ["hi", "hello", "hey", "habari", "mambo", "sasa"]
+    ):
         return Intent.GREETING
 
-    if any(term in text for term in [
-        "hours", "time", "open", "close", "remind", "question",
-        "price", "cost", "fee", "charge", "how much", "pricing",
-        "where", "location", "address", "services", "wapi", "bei",
-    ]):
+    if any(
+        term in text
+        for term in [
+            "hours",
+            "time",
+            "open",
+            "close",
+            "remind",
+            "question",
+            "price",
+            "cost",
+            "fee",
+            "charge",
+            "how much",
+            "pricing",
+            "where",
+            "location",
+            "address",
+            "services",
+            "wapi",
+            "bei",
+        ]
+    ):
         return Intent.GENERAL_QUERY
 
     return Intent.UNKNOWN
 
 
 # ── Intent Detection ──────────────────────────────────────────────────────────
+
 
 async def detect_intent(message: str) -> Intent:
     """
@@ -107,7 +186,7 @@ async def detect_intent(message: str) -> Intent:
         f"Message: {message}"
     )
     try:
-        response = _genai_client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
+        response = _get_genai_client().models.generate_content(model=GEMINI_MODEL, contents=prompt)
         raw = (response.text or "").strip().upper()
     except Exception:
         # Gemini can be unavailable or quota-limited; keep the chat moving.
@@ -123,6 +202,7 @@ async def detect_intent(message: str) -> Intent:
 
 # ── Core Orchestrator ─────────────────────────────────────────────────────────
 
+
 async def handle_message(msg: IncomingMessage) -> None:
     """
     Main entry point for every inbound patient message.
@@ -130,7 +210,7 @@ async def handle_message(msg: IncomingMessage) -> None:
     """
     # ── Load context ──────────────────────────────────────────────────────────
     patient = get_or_create_patient(msg.from_phone, msg.clinic_id)
-    clinic  = get_clinic(msg.clinic_id)
+    clinic = get_clinic(msg.clinic_id)
 
     if not clinic:
         return  # Orphaned message — no clinic found
@@ -202,24 +282,22 @@ async def handle_message(msg: IncomingMessage) -> None:
                     await send_message(msg.from_phone, reply)
                 else:
                     await send_message(
-                        msg.from_phone,
-                        get_message("unknown", lang, clinic_name=clinic.name)
+                        msg.from_phone, get_message("unknown", lang, clinic_name=clinic.name)
                     )
             else:
                 await send_message(
-                    msg.from_phone,
-                    get_message("unknown", lang, clinic_name=clinic.name)
+                    msg.from_phone, get_message("unknown", lang, clinic_name=clinic.name)
                 )
         else:
             # If we just asked "Would you like to book?" and they said yes, start booking
             ctx = get_conversation_context(msg.from_phone)
-            if ctx.get("expecting_booking") and intent in (Intent.CONFIRM_APPOINTMENT, Intent.BOOK_APPOINTMENT):
+            if ctx.get("expecting_booking") and intent in (
+                Intent.CONFIRM_APPOINTMENT,
+                Intent.BOOK_APPOINTMENT,
+            ):
                 await _start_booking(msg, patient, clinic, lang)
             else:
-                await send_message(
-                    msg.from_phone,
-                    get_message("no_active_appointment", lang)
-                )
+                await send_message(msg.from_phone, get_message("no_active_appointment", lang))
 
     # Reset unknown counter on any successful interaction
     if intent != Intent.UNKNOWN:
@@ -227,6 +305,7 @@ async def handle_message(msg: IncomingMessage) -> None:
 
 
 # ── Conversational Response Generation ──────────────────────────────────────
+
 
 async def _generate_reply(
     patient_message: str,
@@ -240,7 +319,7 @@ async def _generate_reply(
     prompt = (
         f"You are Zana, a warm and friendly virtual assistant at {clinic.name}, a medical clinic.\n"
         f"{name_part}\n"
-        f"The patient just said: \"{patient_message}\"\n\n"
+        f'The patient just said: "{patient_message}"\n\n'
         "Respond naturally and warmly, like a real clinic receptionist.\n"
         "Keep it concise (2-3 sentences).\n"
         "Do NOT use numbered lists or menus.\n"
@@ -248,13 +327,14 @@ async def _generate_reply(
         f"{lang_inst}"
     )
     try:
-        response = _genai_client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
+        response = _get_genai_client().models.generate_content(model=GEMINI_MODEL, contents=prompt)
         return response.text.strip()
     except Exception:
         return None
 
 
 # ── Flow Handlers ─────────────────────────────────────────────────────────────
+
 
 async def _handle_greeting(msg: IncomingMessage, clinic: Clinic, lang: str) -> None:
     reply = await _generate_reply(msg.message_body, clinic, lang)
@@ -268,24 +348,27 @@ async def _start_booking(msg: IncomingMessage, patient: Patient, clinic: Clinic,
     await send_message(msg.from_phone, get_message("ask_name", lang))
 
 
-async def _handle_collect_name(msg: IncomingMessage, patient: Patient, clinic: Clinic, lang: str) -> None:
-    name    = msg.message_body.strip().title()
+async def _handle_collect_name(
+    msg: IncomingMessage, patient: Patient, clinic: Clinic, lang: str
+) -> None:
+    name = msg.message_body.strip().title()
     context = {"name": name}
 
     # Build numbered services list
-    services = [f"{['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣'][i]} {s}" for i, s in enumerate(clinic.services)]
+    services = [f"{['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣'][i]} {s}" for i, s in enumerate(clinic.services)]
     services_list = "\n".join(services)
 
     set_conversation_state(msg.from_phone, ConversationState.COLLECTING_SERVICE, context=context)
     await send_message(
-        msg.from_phone,
-        get_message("ask_service", lang, name=name, services_list=services_list)
+        msg.from_phone, get_message("ask_service", lang, name=name, services_list=services_list)
     )
 
 
-async def _handle_collect_service(msg: IncomingMessage, patient: Patient, clinic: Clinic, lang: str) -> None:
+async def _handle_collect_service(
+    msg: IncomingMessage, patient: Patient, clinic: Clinic, lang: str
+) -> None:
     context = get_conversation_context(msg.from_phone)
-    text    = msg.message_body.strip()
+    text = msg.message_body.strip()
 
     # Accept numeric choice or text match
     service = None
@@ -303,12 +386,14 @@ async def _handle_collect_service(msg: IncomingMessage, patient: Patient, clinic
     if not service:
         await send_message(
             msg.from_phone,
-            get_message("ask_service", lang,
-                        name=context.get("name", ""),
-                        services_list="\n".join(
-                            [f"{['1️⃣','2️⃣','3️⃣','4️⃣'][i]} {s}"
-                             for i, s in enumerate(clinic.services)]
-                        ))
+            get_message(
+                "ask_service",
+                lang,
+                name=context.get("name", ""),
+                services_list="\n".join(
+                    [f"{['1️⃣', '2️⃣', '3️⃣', '4️⃣'][i]} {s}" for i, s in enumerate(clinic.services)]
+                ),
+            ),
         )
         return
 
@@ -317,8 +402,10 @@ async def _handle_collect_service(msg: IncomingMessage, patient: Patient, clinic
     await send_message(msg.from_phone, get_message("ask_datetime", lang))
 
 
-async def _handle_collect_datetime(msg: IncomingMessage, patient: Patient, clinic: Clinic, lang: str) -> None:
-    context   = get_conversation_context(msg.from_phone)
+async def _handle_collect_datetime(
+    msg: IncomingMessage, patient: Patient, clinic: Clinic, lang: str
+) -> None:
+    context = get_conversation_context(msg.from_phone)
     date, pref = parse_datetime_from_text(msg.message_body, clinic)
 
     if date is None:
@@ -337,16 +424,18 @@ async def _handle_collect_datetime(msg: IncomingMessage, patient: Patient, clini
 
     set_conversation_state(msg.from_phone, ConversationState.CONFIRMING_BOOKING, context=context)
     await send_message(
-        msg.from_phone,
-        get_message("show_slots", lang, slots_list=format_slots_list(slots, lang))
+        msg.from_phone, get_message("show_slots", lang, slots_list=format_slots_list(slots, lang))
     )
 
 
-async def _handle_confirm_slot(msg: IncomingMessage, patient: Patient, clinic: Clinic, lang: str) -> None:
+async def _handle_confirm_slot(
+    msg: IncomingMessage, patient: Patient, clinic: Clinic, lang: str
+) -> None:
     from datetime import datetime
+
     context = get_conversation_context(msg.from_phone)
-    text    = msg.message_body.strip()
-    slots   = context.get("available_slots", [])
+    text = msg.message_body.strip()
+    slots = context.get("available_slots", [])
 
     if not slots:
         await send_message(msg.from_phone, get_message("ask_datetime", lang))
@@ -359,25 +448,27 @@ async def _handle_confirm_slot(msg: IncomingMessage, patient: Patient, clinic: C
     if idx is None or not (0 <= idx < len(slots)):
         await send_message(
             msg.from_phone,
-            get_message("show_slots", lang, slots_list=format_slots_list(
-                [datetime.fromisoformat(s) for s in slots], lang
-            ))
+            get_message(
+                "show_slots",
+                lang,
+                slots_list=format_slots_list([datetime.fromisoformat(s) for s in slots], lang),
+            ),
         )
         return
 
     chosen_dt = datetime.fromisoformat(slots[idx])
-    name      = context.get("name", patient.name or "")
-    service   = context.get("service", "General")
-    doctor    = context.get("doctor", clinic.doctors[0])
+    name = context.get("name", patient.name or "")
+    service = context.get("service", "General")
+    doctor = context.get("doctor", clinic.doctors[0])
 
     # Create the appointment record
     create_appointment(
-        clinic_id     = clinic.clinic_id,
-        patient_phone = msg.from_phone,
-        patient_name  = name,
-        doctor_name   = doctor,
-        service       = service,
-        dt            = chosen_dt,
+        clinic_id=clinic.clinic_id,
+        patient_phone=msg.from_phone,
+        patient_name=name,
+        doctor_name=doctor,
+        service=service,
+        dt=chosen_dt,
     )
 
     # Update patient name if we just learned it
@@ -386,19 +477,24 @@ async def _handle_confirm_slot(msg: IncomingMessage, patient: Patient, clinic: C
     set_conversation_state(msg.from_phone, ConversationState.IDLE, context={})
     await send_message(
         msg.from_phone,
-        get_message("booking_confirmed", lang,
-                    name=name,
-                    date=chosen_dt.strftime("%A, %d %B"),
-                    time=chosen_dt.strftime("%I:%M %p"),
-                    doctor=doctor,
-                    clinic_name=clinic.name)
+        get_message(
+            "booking_confirmed",
+            lang,
+            name=name,
+            date=chosen_dt.strftime("%A, %d %B"),
+            time=chosen_dt.strftime("%I:%M %p"),
+            doctor=doctor,
+            clinic_name=clinic.name,
+        ),
     )
 
 
-async def _handle_reminder_response(msg: IncomingMessage, patient: Patient, clinic: Clinic, lang: str, intent: Intent) -> None:
+async def _handle_reminder_response(
+    msg: IncomingMessage, patient: Patient, clinic: Clinic, lang: str, intent: Intent
+) -> None:
     context = get_conversation_context(msg.from_phone)
     appt_id = context.get("appointment_id")
-    text    = msg.message_body.strip()
+    text = msg.message_body.strip()
 
     # Normalize: accept "1"/"yes"/"confirm"/"ndiyo" as confirm, etc.
     if text == "1" or intent == Intent.CONFIRM_APPOINTMENT:
@@ -407,48 +503,50 @@ async def _handle_reminder_response(msg: IncomingMessage, patient: Patient, clin
         set_conversation_state(msg.from_phone, ConversationState.IDLE, context={})
         await send_message(
             msg.from_phone,
-            get_message("confirmed", lang,
-                        name=patient.name or "",
-                        time=context.get("time", ""))
+            get_message("confirmed", lang, name=patient.name or "", time=context.get("time", "")),
         )
         # Notify owner
         await send_message(
             clinic.owner_phone,
-            f"✅ {patient.name} confirmed their {context.get('time', '')} appointment."
+            f"✅ {patient.name} confirmed their {context.get('time', '')} appointment.",
         )
 
     elif text == "2" or intent == Intent.CANCEL_APPOINTMENT:
         if appt_id:
             cancel_appointment(clinic.clinic_id, appt_id)
         set_conversation_state(msg.from_phone, ConversationState.IDLE, context={})
-        await send_message(
-            msg.from_phone,
-            get_message("cancelled", lang, name=patient.name or "")
-        )
+        await send_message(msg.from_phone, get_message("cancelled", lang, name=patient.name or ""))
         await send_message(
             clinic.owner_phone,
-            f"❌ {patient.name} cancelled their {context.get('time', '')} appointment. Slot is now open."
+            f"❌ {patient.name} cancelled their {context.get('time', '')} appointment. Slot is now open.",
         )
 
     elif text == "3" or intent == Intent.RESCHEDULE:
-        set_conversation_state(msg.from_phone, ConversationState.COLLECTING_RESCHEDULE, context=context)
+        set_conversation_state(
+            msg.from_phone, ConversationState.COLLECTING_RESCHEDULE, context=context
+        )
         await send_message(msg.from_phone, get_message("ask_reschedule", lang))
 
     else:
         # Ambiguous — ask again
         await send_message(
             msg.from_phone,
-            get_message("reminder_24hr", lang,
-                        name=patient.name or "",
-                        clinic_name=clinic.name,
-                        date=context.get("date", ""),
-                        time=context.get("time", ""),
-                        doctor=context.get("doctor", ""))
+            get_message(
+                "reminder_24hr",
+                lang,
+                name=patient.name or "",
+                clinic_name=clinic.name,
+                date=context.get("date", ""),
+                time=context.get("time", ""),
+                doctor=context.get("doctor", ""),
+            ),
         )
 
 
-async def _handle_reschedule_datetime(msg: IncomingMessage, patient: Patient, clinic: Clinic, lang: str) -> None:
-    context    = get_conversation_context(msg.from_phone)
+async def _handle_reschedule_datetime(
+    msg: IncomingMessage, patient: Patient, clinic: Clinic, lang: str
+) -> None:
+    context = get_conversation_context(msg.from_phone)
     date, pref = parse_datetime_from_text(msg.message_body, clinic)
 
     if date is None:
@@ -464,12 +562,13 @@ async def _handle_reschedule_datetime(msg: IncomingMessage, patient: Patient, cl
     context["available_slots"] = [s.isoformat() for s in slots]
     set_conversation_state(msg.from_phone, ConversationState.CONFIRMING_BOOKING, context=context)
     await send_message(
-        msg.from_phone,
-        get_message("show_slots", lang, slots_list=format_slots_list(slots, lang))
+        msg.from_phone, get_message("show_slots", lang, slots_list=format_slots_list(slots, lang))
     )
 
 
-async def _handle_followup_response(msg: IncomingMessage, patient: Patient, clinic: Clinic, lang: str, intent: Intent) -> None:
+async def _handle_followup_response(
+    msg: IncomingMessage, patient: Patient, clinic: Clinic, lang: str, intent: Intent
+) -> None:
     text = msg.message_body.strip()
 
     if text == "1":
@@ -491,7 +590,7 @@ async def _handle_general_query(msg: IncomingMessage, clinic: Clinic, lang: str)
     text = msg.message_body.lower()
 
     if any(w in text for w in ["hour", "time", "open", "close", "saa", "wazi"]):
-        days  = ", ".join(clinic.working_days)
+        days = ", ".join(clinic.working_days)
         reply = (
             f"We're open {days}.\n"
             f"🕗 {clinic.working_hours.start} – {clinic.working_hours.end}\n\n"
@@ -499,7 +598,7 @@ async def _handle_general_query(msg: IncomingMessage, clinic: Clinic, lang: str)
         )
     elif any(w in text for w in ["price", "cost", "fee", "charge", "how much", "pricing", "bei"]):
         reply = (
-            f"Pricing depends on the service you need. "
+            "Pricing depends on the service you need. "
             f"We'd be happy to discuss — could you book a consultation so the doctor can advise you? 😊"
         )
     elif any(w in text for w in ["where", "location", "address", "wapi", "mahali"]):
@@ -519,28 +618,29 @@ async def _handle_general_query(msg: IncomingMessage, clinic: Clinic, lang: str)
         )
 
     # Flag that we just asked if they want to book — next "yes" starts booking
-    set_conversation_state(msg.from_phone, ConversationState.IDLE, context={"expecting_booking": True})
+    set_conversation_state(
+        msg.from_phone, ConversationState.IDLE, context={"expecting_booking": True}
+    )
     await send_message(msg.from_phone, reply)
 
 
-async def _escalate(msg: IncomingMessage, patient: Patient | None, clinic: Clinic, lang: str) -> None:
+async def _escalate(
+    msg: IncomingMessage, patient: Patient | None, clinic: Clinic, lang: str
+) -> None:
     """Hand the conversation to a human immediately."""
     set_conversation_state(msg.from_phone, ConversationState.ESCALATED)
 
     # Reassure patient
-    await send_message(
-        msg.from_phone,
-        get_message("escalate_patient", lang)
-    )
+    await send_message(msg.from_phone, get_message("escalate_patient", lang))
 
     # Alert clinic owner with full context
-    patient_name  = patient.name if patient else "A patient"
+    patient_name = patient.name if patient else "A patient"
     patient_phone = msg.from_phone
     await send_message(
         clinic.owner_phone,
         f"⚠️ *Action needed*\n\n"
         f"*Patient:* {patient_name}\n"
         f"*Phone:* {patient_phone}\n"
-        f"*Message:* \"{msg.message_body}\"\n\n"
-        f"I've paused this conversation. Please respond to them directly."
+        f'*Message:* "{msg.message_body}"\n\n'
+        f"I've paused this conversation. Please respond to them directly.",
     )

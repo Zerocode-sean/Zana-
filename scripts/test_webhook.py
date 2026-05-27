@@ -11,7 +11,9 @@ import httpx
 def main() -> int:
     if len(sys.argv) != 3:
         print("Usage: python -m scripts.test_webhook <callback_url> <verify_token>")
-        print("Example: python -m scripts.test_webhook https://abcd.ngrok-free.app/webhook zana_verify_token_123")
+        print(
+            "Example: python -m scripts.test_webhook https://abcd.ngrok-free.app/webhook zana_verify_token_123"
+        )
         return 1
 
     callback_url = sys.argv[1].rstrip("/")
